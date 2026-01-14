@@ -2,6 +2,7 @@ import sys
 from os import path
 
 sys.path.insert(0, path.dirname(__file__))
+from comfy_api.latest._util.geometry_types import MESH
 from folder_paths import get_filename_list, get_full_path, get_save_image_path, get_output_directory
 from comfy.model_management import get_torch_device
 from tsr.system import TSR
@@ -101,6 +102,8 @@ class TripoSRSampler:
     FUNCTION = "sample"
     CATEGORY = "Flowty TripoSR"
 
+    
+
     def sample(self, model, reference_image, geometry_resolution, threshold, reference_mask=None):
         device = get_torch_device()
 
@@ -125,7 +128,10 @@ class TripoSRSampler:
         image = image.convert('RGB')
         scene_codes = model([image], device)
         meshes = model.extract_mesh(scene_codes, resolution=geometry_resolution, threshold=threshold)
-        return ([meshes[0]],)
+        #return ([meshes[0]],)
+        mesh_out = model.trimesh_list_to_comfy_mesh(meshes)
+        return (mesh_out,)
+        
 
 
 class TripoSRViewer:

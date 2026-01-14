@@ -13,6 +13,8 @@ from huggingface_hub import hf_hub_download
 from omegaconf import OmegaConf
 from PIL import Image
 
+from comfy_api.latest._util.geometry_types import MESH
+
 from .models.isosurface import MarchingCubeHelper
 from .utils import (
     BaseModule,
@@ -212,3 +214,40 @@ class TSR(BaseModule):
             )
             meshes.append(mesh)
         return meshes
+    
+    def trimesh_list_to_comfy_mesh(self, meshes):
+        """
+        meshes: list[trimesh.Trimesh]
+        returns: MESH with batch=1 tensors:
+            vertices shape (1, V, 3)
+            faces    shape (1, F, 3)
+        """
+        if not meshes:
+            # leeres Mesh (oder raise), je nachdem was bei dir besser ist
+            v = torch.zeros((1, 0, 3), dtype=torch.float32)
+            f = torch.zeros((1, 0, 3), dtype=torch.int64)
+            return MESH(v, f)
+
+        all_v = []
+        all_f = []
+        v_offset = 0
+
+        for m in meshes:
+            v = np.asarray(m.vertices, dtype=np.float32)          # (Vi, 3)
+            f = np.asarray(m.faces, dtype=np.int64)               # (Fi, 3)
+
+            if v.size == 0 or f.size == 0:
+                continue
+
+            all_v.append(torch.from_numpy(v))
+            all_f.append(torch.from_numpy(f + v_offset))
+            v_offset += v.shape[0]
+
+        if not all_v:
+            v = torch.zeros((1, 0, 3), dtype=torch.float32)
+            f = torch.zeros((1, 0, 3), dtype=torch.int64)
+            return MESH(v, f)
+
+        V = torch.cat(all_v, dim=0).unsqueeze(0)   # (1, V, 3)
+        F = torch.cat(all_f, dim=0).unsqueeze(0)   # (1, F, 3)
+        return MESH(V, F)
