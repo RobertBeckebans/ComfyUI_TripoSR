@@ -129,7 +129,7 @@ class TripoSRSampler:
         scene_codes = model([image], device)
         meshes = model.extract_mesh(scene_codes, resolution=geometry_resolution, threshold=threshold)
         #return ([meshes[0]],)
-        mesh_out = model.trimesh_list_to_comfy_mesh(meshes)
+        mesh_out = model.trimesh_list_to_comfy_mesh_with_colors(meshes)
         return (mesh_out,)
         
 

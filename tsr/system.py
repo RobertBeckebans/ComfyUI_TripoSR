@@ -223,7 +223,7 @@ class TSR(BaseModule):
             faces    shape (1, F, 3)
         """
         if not meshes:
-            # leeres Mesh (oder raise), je nachdem was bei dir besser ist
+            # empty mesh (or raise, depending on what works better for you)
             v = torch.zeros((1, 0, 3), dtype=torch.float32)
             f = torch.zeros((1, 0, 3), dtype=torch.int64)
             return MESH(v, f)
@@ -251,3 +251,64 @@ class TSR(BaseModule):
         V = torch.cat(all_v, dim=0).unsqueeze(0)   # (1, V, 3)
         F = torch.cat(all_f, dim=0).unsqueeze(0)   # (1, F, 3)
         return MESH(V, F)
+
+    def trimesh_list_to_comfy_mesh_with_colors(self, meshes):
+        all_v = []
+        all_f = []
+        all_c = []
+        v_offset = 0
+        have_any_colors = False
+
+        for m in meshes:
+            v = np.asarray(m.vertices, dtype=np.float32)   # (Vi,3)
+            f = np.asarray(m.faces, dtype=np.int64)        # (Fi,3)
+            if v.size == 0 or f.size == 0:
+                continue
+
+            # Vertex colors (optional)
+            c = None
+            if hasattr(m, "visual") and hasattr(m.visual, "vertex_colors"):
+                vc = np.asarray(m.visual.vertex_colors)
+                # trimesh can return (V,4) uint8, sometimes (V,3)
+                if vc.ndim == 2 and vc.shape[0] == v.shape[0] and vc.shape[1] in (3, 4):
+                    if vc.dtype != np.uint8:
+                        # if float 0..1 or 0..255 -> normalize robustly
+                        if vc.max() <= 1.0:
+                            vc = (vc * 255.0).clip(0, 255).astype(np.uint8)
+                        else:
+                            vc = vc.clip(0, 255).astype(np.uint8)
+                    if vc.shape[1] == 3:
+                        alpha = np.full((vc.shape[0], 1), 255, dtype=np.uint8)
+                        vc = np.concatenate([vc, alpha], axis=1)
+                    c = vc
+                    have_any_colors = True
+
+            if c is None:
+                # default: white, full alpha
+                c = np.full((v.shape[0], 4), 255, dtype=np.uint8)
+
+            all_v.append(torch.from_numpy(v))
+            all_f.append(torch.from_numpy(f + v_offset))
+            all_c.append(torch.from_numpy(c))
+            v_offset += v.shape[0]
+
+        if not all_v:
+            mesh = MESH(
+                torch.zeros((1, 0, 3), dtype=torch.float32),
+                torch.zeros((1, 0, 3), dtype=torch.int64),
+            )
+            # no colors
+            return mesh
+
+        V = torch.cat(all_v, dim=0).unsqueeze(0)  # (1,V,3)
+        F = torch.cat(all_f, dim=0).unsqueeze(0)  # (1,F,3)
+        C = torch.cat(all_c, dim=0).unsqueeze(0)  # (1,V,4) uint8
+
+        mesh = MESH(V, F)
+
+        # only append if colors are actually meaningful
+        # (you can also always append – save_glb can handle it)
+        if have_any_colors:
+            mesh.vertex_colors = C  # dynamic attribute
+
+        return mesh
